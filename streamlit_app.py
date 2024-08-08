@@ -4,7 +4,6 @@ from PyPDF2 import PdfReader
 import openai
 import io
 import time
-import logging
 from collections import deque
 from langsmith import Client
 import functools
@@ -14,10 +13,6 @@ from langchain.schema import HumanMessage, SystemMessage
 from langchain.callbacks import get_openai_callback
 from dotenv import load_dotenv
 import os
-
-# Set up logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
@@ -36,23 +31,13 @@ os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
 os.environ["LANGCHAIN_PROJECT"] = "Gradient-Cyber-customer-Bot"
 
 # Initialize clients
-try:
-    pc = Pinecone(api_key=PINECONE_API_KEY)
-    langsmith_client = Client(api_key=LANGCHAIN_API_KEY)
-    chat = ChatOpenAI(model_name="gpt-4", temperature=0.3)
-    embeddings = OpenAIEmbeddings()
-    logger.info("Clients initialized successfully")
-except Exception as e:
-    logger.error(f"Error initializing clients: {str(e)}")
-    st.error(f"Error initializing clients: {str(e)}")
+pc = Pinecone(api_key=PINECONE_API_KEY)
+langsmith_client = Client(api_key=LANGCHAIN_API_KEY)
+chat = ChatOpenAI(model_name="gpt-4o", temperature=0.3)
+embeddings = OpenAIEmbeddings()
 
 # Specify your index name here
-try:
-    index = pc.Index(INDEX_NAME)
-    logger.info(f"Pinecone index '{INDEX_NAME}' initialized")
-except Exception as e:
-    logger.error(f"Error initializing Pinecone index: {str(e)}")
-    st.error(f"Error initializing Pinecone index: {str(e)}")
+index = pc.Index(INDEX_NAME)
 
 # Initialize session state for conversation history
 if 'conversation_history' not in st.session_state:
@@ -66,10 +51,8 @@ def safe_run_tree(name, run_type):
                 with langsmith_client.trace(name=name, run_type=run_type) as run:
                     result = func(*args, **kwargs)
                     run.end(outputs={"result": str(result)})
-                    logger.info(f"LangSmith trace completed for {name}")
                     return result
             except Exception as e:
-                logger.error(f"Error in LangSmith tracing for {name}: {str(e)}")
                 st.error(f"Error in LangSmith tracing: {str(e)}")
                 return func(*args, **kwargs)
         return wrapper
@@ -101,19 +84,23 @@ def upsert_to_pinecone(chunks, pdf_name):
         batch = chunks[i:i+batch_size]
         ids = [f"{pdf_name}_{j}" for j in range(i, i+len(batch))]
         try:
+            # Get embeddings for the batch
             embeddings = [get_embedding(chunk) for chunk in batch]
+            # Prepare vectors for upsert
             to_upsert = [
                 (id, embedding, {"text": chunk})
                 for id, embedding, chunk in zip(ids, embeddings, batch)
             ]
+            # Upsert to Pinecone
             index.upsert(vectors=to_upsert)
+            # Update progress bar
             progress = min(1.0, (i + batch_size) / total_chunks)
             progress_bar.progress(progress)
         except Exception as e:
-            logger.error(f"Error during upsert: {str(e)}")
             st.error(f"Error during upsert: {str(e)}")
             st.error(f"Failed at chunk {i}")
             break
+        # Add a small delay to avoid hitting rate limits
         time.sleep(1)  # Increased delay
     st.success(f"Finished processing {total_chunks} chunks.")
 
@@ -129,23 +116,27 @@ def generate_answer(query, context, conversation_history):
     
     messages = [system_message]
     
+    # Add conversation history
     for q, a in conversation_history:
         messages.append(HumanMessage(content=q))
         messages.append(SystemMessage(content=a))
     
+    # Add current query and context
     messages.append(HumanMessage(content=f"Context: {context}\n\nQuestion: {query}"))
     
+    # Make 5 LLM calls
     answers = []
     for _ in range(5):
         with get_openai_callback() as cb:
             response = chat(messages)
         answers.append(response.content.strip())
     
+    # Choose the most common answer or the first one if all are different
     from collections import Counter
     most_common_answer = Counter(answers).most_common(1)[0][0]
     return most_common_answer
 
-# Streamlit UI
+# Sidebar
 st.sidebar.markdown("""
     <style>
     .big-font {
@@ -158,13 +149,17 @@ st.sidebar.markdown("""
     """, unsafe_allow_html=True)
 st.sidebar.title("PDF Uploader")
 
+# File uploader in sidebar
 uploaded_file = st.sidebar.file_uploader("Choose a PDF file", type="pdf")
 if uploaded_file is not None:
     st.sidebar.write("File uploaded successfully!")
     if st.sidebar.button("Process and Upsert to Pinecone"):
         with st.sidebar.spinner("Processing PDF and upserting to Pinecone..."):
+            # Extract text from the uploaded PDF
             pdf_text = extract_text_from_pdf(io.BytesIO(uploaded_file.read()))
+            # Create chunks from the extracted text
             chunks = create_chunks(pdf_text)
+            # Upsert chunks to Pinecone
             upsert_to_pinecone(chunks, uploaded_file.name)
 
 st.sidebar.title("Conversation History")
@@ -174,8 +169,10 @@ if st.sidebar.button("Show Conversation History"):
         st.sidebar.text(f"A: {a}")
         st.sidebar.write("---")
 
+# Main content area
 st.title("Gradient Cyber Q&A System")
 
+# Q&A section
 query = st.text_input("Enter your question:")
 if st.button("Ask") or query:
     if query:
@@ -190,12 +187,10 @@ if st.button("Ask") or query:
             else:
                 st.subheader("Answer:")
                 st.write(answer)
+            # Add to conversation history
             st.session_state.conversation_history.append((query, answer))
             run.end(outputs={"answer": answer})
     else:
         st.warning("Please enter a question.")
 
 st.write("Note: Make sure you have set up your Pinecone index correctly.")
-
-# Log successful completion of the script
-logger.info("Streamlit app completed successfully")
