@@ -104,11 +104,9 @@ if uploaded_file is not None:
 
 st.title("Gradient Cyber Q&A System")
 
-# Initialize session state for chat history and recent questions
+# Initialize session state for chat history
 if "messages" not in st.session_state:
     st.session_state.messages = []
-if "recent_questions" not in st.session_state:
-    st.session_state.recent_questions = []
 
 # Display chat messages
 for message in st.session_state.messages:
@@ -153,23 +151,10 @@ if query:
         message_placeholder.markdown(full_response)
     
     st.session_state.messages.append({"role": "assistant", "content": full_response})
-    
-    # Add the question and answer to recent questions
-    st.session_state.recent_questions.append({"question": query, "answer": full_response})
-    # Keep only the last 5 questions
-    st.session_state.recent_questions = st.session_state.recent_questions[-5:]
-
-# Display recent questions in the sidebar
-st.sidebar.title("Recent Questions")
-for idx, item in enumerate(reversed(st.session_state.recent_questions), 1):
-    st.sidebar.subheader(f"Q{idx}: {item['question']}")
-    st.sidebar.write(f"A: {item['answer'][:100]}...")  # Display first 100 characters of the answer
-    st.sidebar.write("---")
 
 st.sidebar.title("Conversation History")
 if st.sidebar.button("Clear History"):
     st.session_state.messages = []
-    st.session_state.recent_questions = []
     if "doc_ids" in st.session_state:
         st.session_state.doc_ids = []
     st.sidebar.success("Conversation history and document references cleared.")
