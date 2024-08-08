@@ -78,7 +78,7 @@ with st.sidebar:
                 num_chunks = process_and_upsert_pdf(uploaded_file)
                 st.success(f"Processed and upserted {num_chunks} chunks to Pinecone.")
     st.header("Controls")
-    if st.button("Toggle Conversation History"):
+    if st.button("Conversation History"):
         st.session_state.show_history = not st.session_state.show_history
     if st.button("Clear History"):
         st.session_state.messages = []
