@@ -6,6 +6,7 @@ from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory
 from langchain.callbacks.tracers import LangChainTracer
 from langchain.callbacks.manager import CallbackManager
+from langchain.schema import Document
 from pinecone import Pinecone
 from PyPDF2 import PdfReader
 import os
@@ -53,6 +54,24 @@ llm = ChatOpenAI(
     temperature=0,
     callback_manager=callback_manager
 )
+
+class CustomRetriever:
+    def __init__(self, vectorstore, doc_ids):
+        self.vectorstore = vectorstore
+        self.doc_ids = doc_ids
+
+    def get_relevant_documents(self, query):
+        if not self.doc_ids:
+            return []
+        results = self.vectorstore.similarity_search(
+            query,
+            k=5,
+            filter={"doc_id": {"$in": self.doc_ids}}
+        )
+        return results
+
+    async def aget_relevant_documents(self, query):
+        return self.get_relevant_documents(query)
 
 def extract_text_from_pdf(pdf_file):
     pdf_reader = PdfReader(pdf_file)
@@ -124,30 +143,26 @@ if query:
         message_placeholder = st.empty()
         full_response = ""
         
-        # Create a ConversationalRetrievalChain with a filtered retriever
+        # Create a ConversationalRetrievalChain with a custom retriever
         memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
         
-        # Create a filtered retriever
-        retriever = vectorstore.as_retriever()
-        
-        # Filter the retriever to only search documents with the stored doc_ids
+        # Create a custom retriever that only searches within uploaded documents
         if "doc_ids" in st.session_state and st.session_state.doc_ids:
-            retriever = vectorstore.as_retriever(
-                search_kwargs={
-                    "filter": {"doc_id": {"$in": st.session_state.doc_ids}}
-                }
+            custom_retriever = CustomRetriever(vectorstore, st.session_state.doc_ids)
+            
+            qa_chain = ConversationalRetrievalChain.from_llm(
+                llm=llm,
+                retriever=custom_retriever,
+                memory=memory,
+                callback_manager=callback_manager
             )
+            
+            # Generate the response
+            result = qa_chain({"question": query, "chat_history": [(msg["role"], msg["content"]) for msg in st.session_state.messages]})
+            full_response = result["answer"]
+        else:
+            full_response = "Please upload and process a document before asking questions."
         
-        qa_chain = ConversationalRetrievalChain.from_llm(
-            llm=llm,
-            retriever=retriever,
-            memory=memory,
-            callback_manager=callback_manager
-        )
-        
-        # Generate the response
-        result = qa_chain({"question": query, "chat_history": [(msg["role"], msg["content"]) for msg in st.session_state.messages]})
-        full_response = result["answer"]
         message_placeholder.markdown(full_response)
     
     st.session_state.messages.append({"role": "assistant", "content": full_response})
