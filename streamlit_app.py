@@ -81,7 +81,6 @@ def process_and_upsert_pdf(pdf_file):
     
     return len(chunks)
 
-# Streamlit UI
 st.sidebar.markdown("""
     <style>
     .big-font {
@@ -152,7 +151,14 @@ if query:
     
     st.session_state.messages.append({"role": "assistant", "content": full_response})
 
+# Display conversation history in the sidebar
 st.sidebar.title("Conversation History")
+if st.session_state.messages:
+    for i, message in enumerate(st.session_state.messages):
+        if message["role"] == "human":
+            st.sidebar.text(f"Q{i//2 + 1}: {message['content'][:50]}...")
+
+# Clear history button
 if st.sidebar.button("Clear History"):
     st.session_state.messages = []
     if "doc_ids" in st.session_state:
