@@ -11,6 +11,7 @@ from PyPDF2 import PdfReader
 import os
 from langsmith import Client
 from dotenv import load_dotenv
+import uuid
 
 # Load environment variables
 load_dotenv()
@@ -64,7 +65,20 @@ def process_and_upsert_pdf(pdf_file):
     text = extract_text_from_pdf(pdf_file)
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
     chunks = text_splitter.split_text(text)
-    vectorstore.add_texts(chunks, metadatas=[{"source": pdf_file.name} for _ in chunks])
+    
+    # Generate a unique ID for this document
+    doc_id = str(uuid.uuid4())
+    
+    # Add the doc_id to the metadata of each chunk
+    metadatas = [{"source": pdf_file.name, "doc_id": doc_id} for _ in chunks]
+    
+    vectorstore.add_texts(chunks, metadatas=metadatas)
+    
+    # Store the doc_id in session state
+    if "doc_ids" not in st.session_state:
+        st.session_state.doc_ids = []
+    st.session_state.doc_ids.append(doc_id)
+    
     return len(chunks)
 
 # Streamlit UI
@@ -110,11 +124,23 @@ if query:
         message_placeholder = st.empty()
         full_response = ""
         
-        # Create a ConversationalRetrievalChain
+        # Create a ConversationalRetrievalChain with a filtered retriever
         memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+        
+        # Create a filtered retriever
+        retriever = vectorstore.as_retriever()
+        
+        # Filter the retriever to only search documents with the stored doc_ids
+        if "doc_ids" in st.session_state and st.session_state.doc_ids:
+            retriever = vectorstore.as_retriever(
+                search_kwargs={
+                    "filter": {"doc_id": {"$in": st.session_state.doc_ids}}
+                }
+            )
+        
         qa_chain = ConversationalRetrievalChain.from_llm(
             llm=llm,
-            retriever=vectorstore.as_retriever(),
+            retriever=retriever,
             memory=memory,
             callback_manager=callback_manager
         )
@@ -129,5 +155,8 @@ if query:
 st.sidebar.title("Conversation History")
 if st.sidebar.button("Clear History"):
     st.session_state.messages = []
+    if "doc_ids" in st.session_state:
+        st.session_state.doc_ids = []
+    st.sidebar.success("Conversation history and document references cleared.")
 
 st.write("Note: Make sure you have set up your Pinecone index and OpenAI API key correctly.")
