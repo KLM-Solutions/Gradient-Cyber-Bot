@@ -124,3 +124,9 @@ st.write("Note: Make sure you have set up your Pinecone index and OpenAI API key
 
 
 
+
+
+
+
+
+
