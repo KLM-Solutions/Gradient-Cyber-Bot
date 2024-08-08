@@ -2,8 +2,7 @@ import streamlit as st
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_pinecone import PineconeVectorStore
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.chains import ConversationalRetrievalChain
-from langchain.memory import ConversationBufferMemory
+from langchain.chains import RetrievalQA
 from langchain.callbacks.tracers import LangChainTracer
 from langchain.callbacks.manager import CallbackManager
 from pinecone import Pinecone
@@ -104,29 +103,10 @@ if uploaded_file is not None:
 
 st.title("Gradient Cyber Q&A System")
 
-# Initialize session state for chat history
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-
-# Display chat messages
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
-
 # Q&A section
-query = st.chat_input("Ask a question about the uploaded documents:")
-if query:
-    st.session_state.messages.append({"role": "human", "content": query})
-    with st.chat_message("human"):
-        st.markdown(query)
-    
-    with st.chat_message("assistant"):
-        message_placeholder = st.empty()
-        full_response = ""
-        
-        # Create a ConversationalRetrievalChain with a filtered retriever
-        memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
-        
+query = st.text_input("Ask a question about the uploaded documents:")
+if st.button("Ask") and query:
+    with st.spinner("Searching for an answer..."):
         # Create a filtered retriever
         retriever = vectorstore.as_retriever()
         
@@ -138,25 +118,23 @@ if query:
                 }
             )
         
-        qa_chain = ConversationalRetrievalChain.from_llm(
+        # Create a RetrievalQA chain
+        qa_chain = RetrievalQA.from_chain_type(
             llm=llm,
+            chain_type="stuff",
             retriever=retriever,
-            memory=memory,
             callback_manager=callback_manager
         )
         
         # Generate the response
-        result = qa_chain({"question": query, "chat_history": [(msg["role"], msg["content"]) for msg in st.session_state.messages]})
-        full_response = result["answer"]
-        message_placeholder.markdown(full_response)
-    
-    st.session_state.messages.append({"role": "assistant", "content": full_response})
+        result = qa_chain({"query": query})
+        
+        st.subheader("Answer:")
+        st.write(result["result"])
 
-st.sidebar.title("Conversation History")
-if st.sidebar.button("Clear History"):
-    st.session_state.messages = []
+if st.sidebar.button("Clear Uploaded Documents"):
     if "doc_ids" in st.session_state:
         st.session_state.doc_ids = []
-    st.sidebar.success("Conversation history and document references cleared.")
+    st.sidebar.success("Uploaded document references cleared.")
 
 st.write("Note: Make sure you have set up your Pinecone index and OpenAI API key correctly.")
