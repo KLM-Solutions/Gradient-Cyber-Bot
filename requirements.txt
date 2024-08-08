@@ -5,4 +5,3 @@ openai==0.27.8
 langsmith==0.0.21
 langchain==0.0.250
 python-dotenv==1.0.0
-functools32==3.2.3-2
