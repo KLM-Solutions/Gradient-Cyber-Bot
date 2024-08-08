@@ -12,6 +12,7 @@ import os
 from langsmith import Client
 from dotenv import load_dotenv
 import uuid
+from datetime import datetime
 
 # Load environment variables
 load_dotenv()
@@ -81,6 +82,7 @@ def process_and_upsert_pdf(pdf_file):
     
     return len(chunks)
 
+# Streamlit UI
 st.sidebar.markdown("""
     <style>
     .big-font {
@@ -103,9 +105,11 @@ if uploaded_file is not None:
 
 st.title("Gradient Cyber Q&A System")
 
-# Initialize session state for chat history
+# Initialize session state for chat history and stored conversations
 if "messages" not in st.session_state:
     st.session_state.messages = []
+if "stored_conversations" not in st.session_state:
+    st.session_state.stored_conversations = []
 
 # Display chat messages
 for message in st.session_state.messages:
@@ -151,18 +155,39 @@ if query:
     
     st.session_state.messages.append({"role": "assistant", "content": full_response})
 
-# Display conversation history in the sidebar
+# Sidebar for conversation history
 st.sidebar.title("Conversation History")
-if st.session_state.messages:
-    for i, message in enumerate(st.session_state.messages):
-        if message["role"] == "human":
-            st.sidebar.text(f"Q{i//2 + 1}: {message['content'][:50]}...")
+
+# Button to store current conversation
+if st.sidebar.button("Store Current Conversation"):
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    stored_conv = {
+        "timestamp": timestamp,
+        "messages": st.session_state.messages
+    }
+    st.session_state.stored_conversations.append(stored_conv)
+    st.sidebar.success(f"Conversation stored at {timestamp}")
+
+# Dropdown to select and view stored conversations
+if st.session_state.stored_conversations:
+    selected_conv = st.sidebar.selectbox(
+        "Select a stored conversation",
+        options=range(len(st.session_state.stored_conversations)),
+        format_func=lambda x: st.session_state.stored_conversations[x]["timestamp"]
+    )
+    
+    if st.sidebar.button("View Selected Conversation"):
+        selected_messages = st.session_state.stored_conversations[selected_conv]["messages"]
+        st.sidebar.markdown("**Selected Conversation:**")
+        for msg in selected_messages:
+            st.sidebar.text(f"{msg['role'].capitalize()}: {msg['content'][:50]}...")
 
 # Clear history button
-if st.sidebar.button("Clear History"):
+if st.sidebar.button("Clear All History"):
     st.session_state.messages = []
+    st.session_state.stored_conversations = []
     if "doc_ids" in st.session_state:
         st.session_state.doc_ids = []
-    st.sidebar.success("Conversation history and document references cleared.")
+    st.sidebar.success("All conversation history cleared.")
 
 st.write("Note: Make sure you have set up your Pinecone index and OpenAI API key correctly.")
