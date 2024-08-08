@@ -32,7 +32,7 @@ os.environ["LANGCHAIN_PROJECT"] = "Gradient-Cyber-customer-Bot"
 
 # Initialize clients
 pc = Pinecone(api_key=PINECONE_API_KEY)
-langsmith_client = Client(api_key=LANGCHAIN_API_KEY)
+langsmith_client = Client(api_key=LANGCHAIN_API_KEY)  # Initialize LangSmith client
 chat = ChatOpenAI(model_name="gpt-4o", temperature=0.3)
 embeddings = OpenAIEmbeddings()
 
@@ -48,7 +48,7 @@ def safe_run_tree(name, run_type):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
             try:
-                with langsmith_client.trace(name=name, run_type=run_type) as run:
+                with langsmith_client.trace(name=name, run_type=run_type) as run:  # Use langsmith_client.trace
                     result = func(*args, **kwargs)
                     run.end(outputs={"result": str(result)})
                     return result
@@ -176,7 +176,7 @@ st.title("Gradient Cyber Q&A System")
 query = st.text_input("Enter your question:")
 if st.button("Ask") or query:
     if query:
-        with langsmith_client.trace(name="process_query", run_type="chain") as run:
+        with langsmith_client.trace(name="process_query", run_type="chain") as run:  # Use langsmith_client.trace
             with st.spinner("Searching for relevant information..."):
                 search_results = search_pinecone(query)
                 context = " ".join([result['metadata']['text'] for result in search_results['matches']])
