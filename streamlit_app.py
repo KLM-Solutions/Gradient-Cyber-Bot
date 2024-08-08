@@ -121,12 +121,3 @@ if query:
         message_placeholder.markdown(full_response)
     st.session_state.messages.append({"role": "assistant", "content": full_response})
 st.write("Note: Make sure you have set up your Pinecone index and OpenAI API key correctly.")
-
-
-
-
-
-
-
-
-
